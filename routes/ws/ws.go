@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/melvinodsa/tron-game-server/config"
 	"github.com/melvinodsa/tron-game-server/game"
 	"github.com/melvinodsa/tron-game-server/routes"
@@ -23,6 +24,11 @@ func WebSockets(ctx context.Context, res http.ResponseWriter, req *http.Request)
 	appCtx := ctx.Value(routes.AppContextKey).(*config.AppContext)
 	appCtx.Log.Info("Got a websockets connection request")
 	socketioServer.ServeHTTP(res, req)
+}
+
+type user struct {
+	Player game.Player
+	Room   game.Room
 }
 
 var socketioServer *socketio.Server
@@ -39,20 +45,26 @@ func init() {
 	})
 	server.OnEvent("/", "name", func(s socketio.Conn, msg string) {
 		player := game.NewPlayer(msg)
-		s.Emit("reply", player.Name)
-		req := game.Request{Player: *player, Type: game.New, Out: make(chan game.Request)}
-		go game.SendRequest(game.GameRequestChannel, req)
-		req = <-req.Out
-		room := req.Room
-		room.SetBoard(10, 2)
-		player2 := game.NewPlayer("new2")
-		room.Participate(*player, 0, 0, "#acacac")
-		room.Participate(*player2, 5, 5, "#acacac")
-		go room.StartGame()
+		u := user{Player: *player}
+		s.SetContext(&u)
+		s.Emit("player", player)
 	})
-	server.OnEvent("/chat", "msg", func(s socketio.Conn, msg string) string {
-		s.SetContext(msg)
-		return "recv " + msg
+	server.OnEvent("/", "join", func(s socketio.Conn, msg string) string {
+		u := s.Context()
+		if u == nil {
+			return `{"error":true, "msg": "username not set"}`
+		}
+		id, err := uuid.Parse(msg)
+		if err != nil {
+			return `{"error": true, "msg": "invalid room id"}`
+		}
+		req := game.Request{ID: id, Type: game.Get, Out: make(chan game.Request)}
+		go game.SendRequest(game.GameRequestChannel, req)
+		res := <-req.Out
+		if !res.Valid {
+			return `{"error":true, "msg": "room not found"}`
+		}
+		return `{"error":false, "msg": "joined the room"}`
 	})
 	server.OnEvent("/", "bye", func(s socketio.Conn) string {
 		last := s.Context().(string)
