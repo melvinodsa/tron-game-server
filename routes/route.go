@@ -97,7 +97,6 @@ func (r Route) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 func (r Route) Exec(ctx context.Context, res http.ResponseWriter, req *http.Request) {
 	/*
 	 * Will get the cancel for the context
-	 * Will set the content type of response as json
 	 * Will execute the handlerfunc
 	 * Cancelling the context at the end
 	 */
